@@ -1,10 +1,10 @@
 # theano-recurrence
 
-This code implements **Recurrent Neural Network (RNN, GRU and LSTM) and their Bidirectional versions (BiRNN, BiGRU, BiLSTM)** in Python using Theano, the code is generic therefore and can be applied to any sequence modelling task, however, as an example I have applied these models on word & character level language modelling.
+This code implements **Recurrent Neural Network (RNN, GRU and LSTM) and their Bidirectional versions (BiRNN, BiGRU, BiLSTM)** in Python using Theano, the code is generic and therefore can be applied to any sequence modelling task, however, as an example I have applied these models on word & character level language modelling.
 
 ## Dependencies
-[Theano](http://deeplearning.net/software/theano/)
-NLTK
+* [Theano](http://deeplearning.net/software/theano/)
+* NLTK
 
 ```bash
 import nltk
@@ -14,13 +14,13 @@ nltk.download(packages)
 
 ## Useful Links
 
-[Andrej Karpathy's awesome blog post on RNN](http://karpathy.github.io/2015/05/21/rnn-effectiveness)
-[Christopher Olah's blog post on LSTM](http://colah.github.io/posts/2015-08-Understanding-LSTMs)
-[Generating Text with Recurrent Neural Networks - Ilya Sutskever](http://www.cs.utoronto.ca/~ilya/pubs/2011/LANG-RNN.pdf)
-[Alex Graves PHD thesis](http://www.cs.toronto.edu/~graves/phd.pdf)
-[Gated Feedback Recurrent Neural Networks - Chung et al.](http://arxiv.org/pdf/1502.02367v4.pdf)
-[Long Short-Term Memory - Hochreiter & Schmidhuber](http://deeplearning.cs.cmu.edu/pdfs/Hochreiter97_lstm.pdf)
-[Bidirectional Recurrent Neural Networks - Schuster & Paliwal](http://www.di.ufpe.br/~fnj/RNA/bibliografia/BRNN.pdf)
+* [Andrej Karpathy's awesome blog post on RNN](http://karpathy.github.io/2015/05/21/rnn-effectiveness)
+* [Christopher Olah's blog post on LSTM](http://colah.github.io/posts/2015-08-Understanding-LSTMs)
+* [Generating Text with Recurrent Neural Networks - Ilya Sutskever](http://www.cs.utoronto.ca/~ilya/pubs/2011/LANG-RNN.pdf)
+* [Alex Graves PHD thesis](http://www.cs.toronto.edu/~graves/phd.pdf)
+* [Gated Feedback Recurrent Neural Networks - Chung et al.](http://arxiv.org/pdf/1502.02367v4.pdf)
+* [Long Short-Term Memory - Hochreiter & Schmidhuber](http://deeplearning.cs.cmu.edu/pdfs/Hochreiter97_lstm.pdf)
+* [Bidirectional Recurrent Neural Networks - Schuster & Paliwal](http://www.di.ufpe.br/~fnj/RNA/bibliografia/BRNN.pdf)
 
 ## Usage
 The code structure and code iteself is fairly straight forward and could be understood in the first glimpse.
@@ -35,7 +35,7 @@ If you'd like to use your own data then create a single file `input.txt` and pla
 
 
 ### Training
-`train.py` provide methods for training each model, if you want to change number of hidden neurons in each layer (at the moment only single layer models are supported to keep the things simple, although adding more layers is very trivial) then change the `n_h` inside each `train(..)`, which by default is set to 100. As the model is trained it stores the current best state of the model i.e set of weights (best = least training error), the stored model is in the `data\models\MODEL-NAME-best_model.pkl`, also this stored model can later be used for resuming training from last point or just for prediction/sampling. If you don't want to start training from scratch and instead use the already trained model then set `use_existing_model=True` in argument to `train(..)`. 
+`train.py` provide methods for training each model, if you want to change number of hidden neurons in each layer (at the moment only single layer models are supported to keep the things simple, although adding more layers is very trivial) then change the `n_h` inside each `train(..)`, which by default is set to 100. As the model is trained it stores the current best state of the model i.e set of weights (best = least training error), the stored model is in the `data\models\MODEL-NAME-best_model.pkl`, also this stored model can later be used for resuming training from the last point or just for prediction/sampling. If you don't want to start training from scratch and instead use the already trained model then set `use_existing_model=True` in argument to `train(..)`. 
 Also optimization strategies can be specified to `train(..)` via `optimizer` parameter, currently supported optimizations are `rmsprop, adam and vanilla stochastic gradient descent` and can be found in `utilities\optimizers.py`.
 `b_path`, `learning_rate`, `n_epochs` in the `train(..)` specifies the 'base path to store model' (default = `data\models\`), 'initial learning rate of the optimizer', and 'number of epochs respectively'.
 During the training some logs (current epoch, sample, cross-entropy error etc) are shown on console to get an idea of how well learning is proceeding, logging frequency can be specified via `logging_freq` in the train(..).

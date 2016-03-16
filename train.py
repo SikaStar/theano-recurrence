@@ -45,8 +45,8 @@ def train(dataset, vocabulary, b_path, rec_model='gru',
             raise NotImplementedError
         else:
             if os.path.isfile(m_path):
-                f = open(m_path, 'rb')
-                rec_params = pkl.load(f)
+                with open(m_path, 'r') as f:
+                    rec_params = pkl.load(f)
             else:
                 print('Unable to load existing model %s , initializing model with random weights' % m_path)
 
@@ -108,8 +108,8 @@ def train(dataset, vocabulary, b_path, rec_model='gru',
             # save the current best model
             if train_cost < best_train_error:
                 best_train_error = train_cost
-                f = open(m_path, 'w')
-                pkl.dump(model.params, f, pkl.HIGHEST_PROTOCOL)
+                with open(m_path, 'w') as f:
+                    pkl.dump(model.params, f, pkl.HIGHEST_PROTOCOL)
 
             if i % logging_freq == 0:
                 iter_end_time = timeit.default_timer()

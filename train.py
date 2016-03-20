@@ -15,6 +15,7 @@ from model.lstm import Lstm, BiLstm
 
 from utilities.optimizers import get_optimizer
 from utilities.loaddata import load_data
+from utilities.textreader import read_word_data, read_char_data
 
 __author__ = 'uyaseen'
 
@@ -136,3 +137,10 @@ def train(dataset, vocabulary, b_path, rec_model='gru',
     plt.savefig(b_path + rec_model + '-error-plot.png')
     plt.show()
     plt.close()
+
+
+if __name__ == '__main__':
+    data, vocabulary = read_char_data('data/input.txt', seq_length=50)
+    train(data, vocabulary, b_path='data/models/', rec_model='gru',
+          n_h=100, use_existing_model=True, n_epochs=600)
+    print('... done')

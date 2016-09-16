@@ -11,10 +11,11 @@ class Rnn(object):
 
     def __init__(self, input, input_dim, hidden_dim, output_dim,
                  activation=T.tanh, init='uniform', inner_init='orthonormal',
-                 params=None):
-        self.input = input
-        self.hidden_dim = hidden_dim
+                 mini_batch=False, params=None):
         self.activation = activation
+        self.mini_batch = mini_batch
+        if mini_batch:
+            input = input.dimshuffle(1, 0, 2)
         if params is None:
             self.W = theano.shared(value=get(identifier=init, shape=(input_dim, hidden_dim)),
                                    name='W',
@@ -40,22 +41,40 @@ class Rnn(object):
         self.h0 = theano.shared(value=get(identifier='zero', shape=(hidden_dim, )), name='h0', borrow=True)
         self.params = [self.W, self.U, self.V, self.bh, self.by]
 
-        def recurrence(x_t, h_tm_prev):
-            h_t = activation(T.dot(x_t, self.W) +
-                             T.dot(h_tm_prev, self.U) + self.bh)
-            y_t = T.nnet.softmax(T.dot(h_t, self.V) + self.by)
-            return h_t, y_t[0]
+        if mini_batch:
+            def recurrence(x_t, h_tm_prev):
+                h_t = activation(T.dot(x_t, self.W) +
+                                 T.dot(h_tm_prev, self.U) + self.bh)
+                y_t = T.nnet.softmax(T.dot(h_t, self.V) + self.by)
+                return h_t, y_t
 
-        [self.h_t, self.y_t], _ = theano.scan(
-            recurrence,
-            sequences=input,
-            outputs_info=[self.h0, None]
-        )
+            [self.h_t, self.y_t], _ = theano.scan(
+                recurrence,
+                sequences=input,
+                outputs_info=[T.alloc(self.h0, input.shape[1], hidden_dim), None]
+            )
+            self.h_t = self.h_t.dimshuffle(1, 0, 2)
+            self.y_t = self.y_t.dimshuffle(1, 0, 2)
+            self.y = T.argmax(self.y_t, axis=2)
+        else:
+            def recurrence(x_t, h_tm_prev):
+                h_t = activation(T.dot(x_t, self.W) +
+                                 T.dot(h_tm_prev, self.U) + self.bh)
+                y_t = T.nnet.softmax(T.dot(h_t, self.V) + self.by)
+                return h_t, y_t[0]
 
-        self.y = T.argmax(self.y_t, axis=1)
+            [self.h_t, self.y_t], _ = theano.scan(
+                recurrence,
+                sequences=input,
+                outputs_info=[self.h0, None]
+            )
+            self.y = T.argmax(self.y_t, axis=1)
 
     def cross_entropy(self, y):
-        return T.sum(T.nnet.categorical_crossentropy(self.y_t, y))
+        if self.mini_batch:
+            return T.mean(T.sum(T.nnet.categorical_crossentropy(self.y_t, y), axis=1))  # naive batch-normalization
+        else:
+            return T.sum(T.nnet.categorical_crossentropy(self.y_t, y))
 
     def negative_log_likelihood(self, y):
         return -T.mean(T.log(self.y_t)[:, y])
@@ -96,15 +115,18 @@ class Rnn(object):
 
 class BiRnn(object):
     def __init__(self, input, input_dim, hidden_dim, output_dim,
-                 params=None):
-        self.input_f = input
-        self.input_b = input[::-1]
-        self.hidden_dim = hidden_dim
+                 mini_batch=False, params=None):
+        self.mini_batch = mini_batch
+        input_f = input
+        if mini_batch:
+            input_b = input[::, ::-1]
+        else:
+            input_b = input[::-1]
         if params is None:
-            self.fwd_rnn = Rnn(input=self.input_f, input_dim=input_dim, hidden_dim=hidden_dim,
-                               output_dim=output_dim)
-            self.bwd_rnn = Rnn(input=self.input_b, input_dim=input_dim, hidden_dim=hidden_dim,
-                               output_dim=output_dim)
+            self.fwd_rnn = Rnn(input=input_f, input_dim=input_dim, hidden_dim=hidden_dim,
+                               output_dim=output_dim, mini_batch=mini_batch)
+            self.bwd_rnn = Rnn(input=input_b, input_dim=input_dim, hidden_dim=hidden_dim,
+                               output_dim=output_dim, mini_batch=mini_batch)
             self.V_f = theano.shared(
                 value=get(identifier='uniform', shape=(hidden_dim, output_dim)),
                 name='V_f',
@@ -137,11 +159,22 @@ class BiRnn(object):
         # Take the weighted sum of forward & backward rnn's hidden representation
         self.h_t = T.dot(self.fwd_rnn.h_t, self.V_f) + T.dot(self.bwd_rnn.h_t, self.V_b)
 
-        self.y_t = T.nnet.softmax(self.h_t + self.by)
-        self.y = T.argmax(self.y_t, axis=1)
+        if mini_batch:
+            # T.nnet.softmax cannot operate on tensor3, here's a simple reshape trick to make it work.
+            h_t = self.h_t + self.by
+            h_t_t = T.reshape(h_t, (h_t.shape[0] * h_t.shape[1], -1))
+            y_t = T.nnet.softmax(h_t_t)
+            self.y_t = T.reshape(y_t, h_t.shape)
+            self.y = T.argmax(self.y_t, axis=2)
+        else:
+            self.y_t = T.nnet.softmax(self.h_t + self.by)
+            self.y = T.argmax(self.y_t, axis=1)
 
     def cross_entropy(self, y):
-        return T.sum(T.nnet.categorical_crossentropy(self.y_t, y))
+        if self.mini_batch:
+            return T.mean(T.sum(T.nnet.categorical_crossentropy(self.y_t, y), axis=1))  # naive batch-normalization
+        else:
+            return T.sum(T.nnet.categorical_crossentropy(self.y_t, y))
 
     def negative_log_likelihood(self, y):
         return -T.mean(T.log(self.y_t)[:, y])

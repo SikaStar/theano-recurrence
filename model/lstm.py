@@ -9,10 +9,12 @@ __author__ = 'uyaseen'
 class Lstm(object):
     def __init__(self, input, input_dim, hidden_dim, output_dim, init='uniform',
                  inner_init='orthonormal', inner_activation=T.nnet.hard_sigmoid,
-                 activation=T.tanh, params=None):
-        self.input = input
+                 activation=T.tanh, mini_batch=False, params=None):
         self.inner_activation = inner_activation
         self.activation = activation
+        self.mini_batch = mini_batch
+        if mini_batch:
+            input = input.dimshuffle(1, 0, 2)
         if params is None:
             # input gate
             self.W_i = theano.shared(value=get(identifier=init, shape=(input_dim, hidden_dim)),
@@ -74,32 +76,62 @@ class Lstm(object):
                        self.W_o, self.U_o, self.b_o,
                        self.V, self.b_y]
 
-        def recurrence(x_t, c_tm_prev, h_tm_prev):
-            x_i = T.dot(x_t, self.W_i) + self.b_i
-            x_f = T.dot(x_t, self.W_f) + self.b_f
-            x_c = T.dot(x_t, self.W_c) + self.b_c
-            x_o = T.dot(x_t, self.W_o) + self.b_o
+        if mini_batch:
+            def recurrence(x_t, c_tm_prev, h_tm_prev):
+                x_i = T.dot(x_t, self.W_i) + self.b_i
+                x_f = T.dot(x_t, self.W_f) + self.b_f
+                x_c = T.dot(x_t, self.W_c) + self.b_c
+                x_o = T.dot(x_t, self.W_o) + self.b_o
 
-            i_t = inner_activation(x_i + T.dot(h_tm_prev, self.U_i))
-            f_t = inner_activation(x_f + T.dot(h_tm_prev, self.U_f))
-            c_t = f_t * c_tm_prev + i_t * activation(x_c + T.dot(h_tm_prev, self.U_c))  # internal memory
-            o_t = inner_activation(x_o + T.dot(h_tm_prev, self.U_o))
-            h_t = o_t * activation(c_t)  # actual hidden state
+                i_t = inner_activation(x_i + T.dot(h_tm_prev, self.U_i))
+                f_t = inner_activation(x_f + T.dot(h_tm_prev, self.U_f))
+                c_t = f_t * c_tm_prev + i_t * activation(x_c + T.dot(h_tm_prev, self.U_c))  # internal memory
+                o_t = inner_activation(x_o + T.dot(h_tm_prev, self.U_o))
+                h_t = o_t * activation(c_t)  # actual hidden state
 
-            y_t = T.nnet.softmax(T.dot(h_t, self.V) + self.b_y)
+                y_t = T.nnet.softmax(T.dot(h_t, self.V) + self.b_y)
 
-            return c_t, h_t, y_t[0]
+                return c_t, h_t, y_t
 
-        [_, self.h_t, self.y_t], _ = theano.scan(
-            recurrence,
-            sequences=self.input,
-            outputs_info=[self.c0, self.h0, None]
-        )
+            [_, self.h_t, self.y_t], _ = theano.scan(
+                recurrence,
+                sequences=input,
+                outputs_info=[T.alloc(self.c0, input.shape[1], hidden_dim),
+                              T.alloc(self.h0, input.shape[1], hidden_dim),
+                              None]
+            )
+            self.h_t = self.h_t.dimshuffle(1, 0, 2)
+            self.y_t = self.y_t.dimshuffle(1, 0, 2)
+            self.y = T.argmax(self.y_t, axis=2)
+        else:
+            def recurrence(x_t, c_tm_prev, h_tm_prev):
+                x_i = T.dot(x_t, self.W_i) + self.b_i
+                x_f = T.dot(x_t, self.W_f) + self.b_f
+                x_c = T.dot(x_t, self.W_c) + self.b_c
+                x_o = T.dot(x_t, self.W_o) + self.b_o
 
-        self.y = T.argmax(self.y_t, axis=1)
+                i_t = inner_activation(x_i + T.dot(h_tm_prev, self.U_i))
+                f_t = inner_activation(x_f + T.dot(h_tm_prev, self.U_f))
+                c_t = f_t * c_tm_prev + i_t * activation(x_c + T.dot(h_tm_prev, self.U_c))  # internal memory
+                o_t = inner_activation(x_o + T.dot(h_tm_prev, self.U_o))
+                h_t = o_t * activation(c_t)  # actual hidden state
+
+                y_t = T.nnet.softmax(T.dot(h_t, self.V) + self.b_y)
+
+                return c_t, h_t, y_t[0]
+
+            [_, self.h_t, self.y_t], _ = theano.scan(
+                recurrence,
+                sequences=input,
+                outputs_info=[self.c0, self.h0, None]
+            )
+            self.y = T.argmax(self.y_t, axis=1)
 
     def cross_entropy(self, y):
-        return T.sum(T.nnet.categorical_crossentropy(self.y_t, y))
+        if self.mini_batch:
+            return T.mean(T.sum(T.nnet.categorical_crossentropy(self.y_t, y), axis=1))  # naive batch-normalization
+        else:
+            return T.sum(T.nnet.categorical_crossentropy(self.y_t, y))
 
     def negative_log_likelihood(self, y):
         return -T.mean(T.log(self.y_t)[:, y])
@@ -141,14 +173,18 @@ class Lstm(object):
 
 class BiLstm(object):
     def __init__(self, input, input_dim, hidden_dim, output_dim,
-                 params=None):
-        self.input_f = input
-        self.input_b = input[::-1]
+                 mini_batch=False, params=None):
+        self.mini_batch = mini_batch
+        input_f = input
+        if mini_batch:
+            input_b = input[::, ::-1]
+        else:
+            input_b = input[::-1]
         if params is None:
-            self.fwd_lstm = Lstm(input=self.input_f, input_dim=input_dim, hidden_dim=hidden_dim,
-                                 output_dim=output_dim)
-            self.bwd_lstm = Lstm(input=self.input_b, input_dim=input_dim, hidden_dim=hidden_dim,
-                                 output_dim=output_dim)
+            self.fwd_lstm = Lstm(input=input_f, input_dim=input_dim, hidden_dim=hidden_dim,
+                                 output_dim=output_dim, mini_batch=mini_batch)
+            self.bwd_lstm = Lstm(input=input_b, input_dim=input_dim, hidden_dim=hidden_dim,
+                                 output_dim=output_dim, mini_batch=mini_batch)
             self.V_f = theano.shared(
                 value=get(identifier='uniform', shape=(hidden_dim, output_dim)),
                 name='V_f',
@@ -189,11 +225,22 @@ class BiLstm(object):
         # Take the weighted sum of forward & backward lstm's hidden representation
         self.h_t = T.dot(self.fwd_lstm.h_t, self.V_f) + T.dot(self.bwd_lstm.h_t, self.V_b)
 
-        self.y_t = T.nnet.softmax(self.h_t + self.by)
-        self.y = T.argmax(self.y_t, axis=1)
+        if mini_batch:
+            # T.nnet.softmax cannot operate on tensor3, here's a simple reshape trick to make it work.
+            h_t = self.h_t + self.by
+            h_t_t = T.reshape(h_t, (h_t.shape[0] * h_t.shape[1], -1))
+            y_t = T.nnet.softmax(h_t_t)
+            self.y_t = T.reshape(y_t, h_t.shape)
+            self.y = T.argmax(self.y_t, axis=2)
+        else:
+            self.y_t = T.nnet.softmax(self.h_t + self.by)
+            self.y = T.argmax(self.y_t, axis=1)
 
     def cross_entropy(self, y):
-        return T.sum(T.nnet.categorical_crossentropy(self.y_t, y))
+        if self.mini_batch:
+            return T.mean(T.sum(T.nnet.categorical_crossentropy(self.y_t, y), axis=1))  # naive batch-normalization
+        else:
+            return T.sum(T.nnet.categorical_crossentropy(self.y_t, y))
 
     def negative_log_likelihood(self, y):
         return -T.mean(T.log(self.y_t)[:, y])

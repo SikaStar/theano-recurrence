@@ -42,6 +42,9 @@ During the training some logs (current epoch, sample, cross-entropy error etc) a
 At the end of training, a plot of `cross-entropy error vs # of iterations` gives an overview of overall training process and is also stored in the `b_path`.
 
 ### Sampling
+```bash
+python sample.py
+```
 One can sample from the model (during training or from the trained model) via `model.generative_sampling(..)` by providing the initial `seed` which could be a random element (word/character) from the vocabulary, `emb_data` which is just the embeddings of our vocabulary (in our case it's just one-hot-encoding) and `sample_length` which is the length of the sample it-self. Frequency of sampling can be specified via `sampling_freq` in the `train(..)`.
 
 **Note:** In theano the only efficient way of implementing sequence models is by using `scan`, which provides a very convenient interface to iterate over tensors, for training everything is good, however, difficulty arises when sampling from the model in-cases where output at every time-step is input to the next time step, in such cases we cannot use the `scan` we used for training because we have to call scan multiple times and each call to scan initializes the hidden-to-hidden state vector `h0` from zero, which means that while sampling we are ignoring hidden state from previous steps which is very wrong, the ugly fix is to write another scan which will be executed only *once per sample*, let it run till `sample_length` and make hidden-state & output at every time-step recurrent by specifying them in the `outputs_info`, `generative_sampling(..)` does exactly this.
@@ -62,3 +65,6 @@ The samples might not look very impressive, however, notice it's just a characte
 
 And here's the error plot (the error was still decreasing but I had to stop training as I did not wanted to burden my poor laptop beyond it's capacity).
 ![GRU Error Plot](/data/models/gru-error-plot.png?raw=true)
+
+### Note
+If you are interested in minimal code, then browse to an [older version](https://github.com/uyaseen/theano-recurrence/tree/b9b8a82410be005d5a3121345e8d62c5ca547982) of this repository.

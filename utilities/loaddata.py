@@ -35,6 +35,6 @@ def load_data(data, vocab, vocab_encoded, one_hot=True):
 
         return shared_x, shared_y, shared_v
 
-    print('... transferring data to the GPU')
+    print('... transferring data to the %s' % theano.config.device)
     train_set_x, train_set_y, voc = shared_dataset(train_set)
     return train_set_x, train_set_y, voc
